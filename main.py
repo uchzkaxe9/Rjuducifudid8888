@@ -37,7 +37,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cmd = [
             'ffmpeg', '-i', input_video,
             '-vf', f"subtitles={input_srt}",
-            '-c:a', 'copy', output
+            '-preset', 'ultrafast',
+            '-c:a', 'copy',
+            output
         ]
         subprocess.run(cmd)
 
@@ -56,4 +58,4 @@ app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
 if __name__ == '__main__':
     app.run_polling()
-  
+    
