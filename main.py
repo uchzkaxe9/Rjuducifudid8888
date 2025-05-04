@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import threading
 import shlex
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, ContextTypes
@@ -18,7 +19,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await update.message.video.get_file()
     path = await file.download_to_drive()
     video_files[update.effective_chat.id] = path
-    await update.message.reply_text('Video mil gaya. Ab subtitle (.srt) bhejo.')
+    await update.message.reply_text('Video mil gaya. Ab subtitle file (.srt) bhejo.')
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.document.file_name.endswith('.srt'):
@@ -29,26 +30,28 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     srt_files[update.effective_chat.id] = path
 
     if update.effective_chat.id in video_files:
-        await update.message.reply_text('Processing start ho gaya. Thoda time lagega...')
+        await update.message.reply_text('Subtitles processing shuru ho gaya hai. Thoda time lagega...')
 
-        input_video = video_files[update.effective_chat.id]
-        input_srt = srt_files[update.effective_chat.id]
-        output = f'output_{update.effective_chat.id}.mp4'
+        # Start thread
+        threading.Thread(target=process_ffmpeg, args=(update, context)).start()
 
-        # Safely escape SRT path
-        safe_srt_path = shlex.quote(input_srt)
+def process_ffmpeg(update, context):
+    chat_id = update.effective_chat.id
+    input_video = video_files[chat_id]
+    input_srt = srt_files[chat_id]
+    output = f'output_{chat_id}.mp4'
+    safe_srt = shlex.quote(input_srt)
 
-        cmd = f'ffmpeg -i "{input_video}" -vf subtitles={safe_srt_path} -preset ultrafast -c:a copy "{output}"'
-        subprocess.run(cmd, shell=True)
+    cmd = f'ffmpeg -i "{input_video}" -vf subtitles={safe_srt} -preset ultrafast -c:a copy "{output}"'
+    subprocess.run(cmd, shell=True)
 
-        await update.message.reply_video(video=open(output, 'rb'), caption='Done! Subtitles added.')
+    context.bot.send_video(chat_id=chat_id, video=open(output, 'rb'), caption='Done! Subtitles added.')
 
-        # Cleanup
-        os.remove(input_video)
-        os.remove(input_srt)
-        os.remove(output)
-        video_files.pop(update.effective_chat.id)
-        srt_files.pop(update.effective_chat.id)
+    os.remove(input_video)
+    os.remove(input_srt)
+    os.remove(output)
+    video_files.pop(chat_id)
+    srt_files.pop(chat_id)
 
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler('start', start))
